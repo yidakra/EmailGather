@@ -6,6 +6,7 @@ import time
 import re
 import os
 from datetime import datetime
+import urllib.parse
 
 
 class BerlinSchoolScraper:
@@ -104,12 +105,12 @@ class BerlinSchoolScraper:
                         school_data["District"] = district_match.group(1)
             
             # Extract phone number
-            phone_elem = soup.find('span', id=lambda x: x and 'lblTelefon' in x)
+            phone_elem = soup.find('span', id=lambda x: x and 'lblTelefon' in x and 'Text' not in x)
             if phone_elem:
                 school_data["Phone"] = phone_elem.text.strip()
             
             # Extract fax number
-            fax_elem = soup.find('span', id=lambda x: x and 'lblFax' in x)
+            fax_elem = soup.find('span', id=lambda x: x and 'lblFax' in x and 'Text' not in x)
             if fax_elem:
                 school_data["Fax"] = fax_elem.text.strip()
             
@@ -119,12 +120,13 @@ class BerlinSchoolScraper:
                 href = email_elem.get('href', '')
                 if 'mailto:' in href:
                     email = href.replace('mailto:', '').strip()
-                    # Clean the email - remove tabs and spaces
+                    # Decode percent-encoded characters and clean up
+                    email = urllib.parse.unquote(email).strip()
                     email = re.sub(r'[\t\n\r]+', '', email)
                     school_data["Email"] = email
                 else:
                     email = email_elem.text.strip()
-                    # Clean the email - remove tabs and spaces
+                    email = urllib.parse.unquote(email).strip()
                     email = re.sub(r'[\t\n\r]+', '', email)
                     school_data["Email"] = email
             
@@ -134,9 +136,19 @@ class BerlinSchoolScraper:
                 school_data["Website"] = web_elem.text.strip()
             
             # Extract principal
-            principal_elem = soup.find('span', id=lambda x: x and 'lblLeitung' in x)
+            principal_elem = soup.find('span', id=lambda x: x and 'lblLeitung' in x and 'Text' not in x)
             if principal_elem:
-                school_data["Principal"] = principal_elem.text.strip()
+                principal_text = principal_elem.text.strip()
+                # Convert "Surname, FirstName" to "FirstName Surname"
+                if ',' in principal_text:
+                    surname, first_name = principal_text.split(',', 1)
+                    # Handle cases with titles like "Dr."
+                    if 'Dr.' in surname:
+                        school_data["Principal"] = f"Dr. {first_name.strip()} {surname.replace('Dr.', '').strip()}"
+                    else:
+                        school_data["Principal"] = f"{first_name.strip()} {surname.strip()}"
+                else:
+                    school_data["Principal"] = principal_text
             
             # Extract additional information
             additional_info_elem = soup.find('span', id=lambda x: x and 'lblZusatz' in x)
@@ -180,11 +192,12 @@ class BerlinSchoolScraper:
                     # Get school details
                     school_info = self.get_school_details(school_id)
                     
-                    # If we have email, print it
-                    if school_info.get("Email"):
-                        print(f"Email: {school_info['Email']}")
-                    else:
-                        print("No email found")
+                    # Print found/not found messages for key fields
+                    print(f"Email: {school_info.get('Email') or 'No email found'}")
+                    print(f"Phone: {school_info.get('Phone') or 'No phone found'}")
+                    print(f"Fax: {school_info.get('Fax') or 'No fax found'}")
+                    print(f"Principal: {school_info.get('Principal') or 'No principal found'}")
+                    print(f"Website: {school_info.get('Website') or 'No website found'}")
                     
                     all_data.append(school_info)
                     
@@ -209,6 +222,5 @@ class BerlinSchoolScraper:
 
 if __name__ == "__main__":
     scraper = BerlinSchoolScraper()
-    # By default, scrape all schools. Adjust limit as needed.
-    # For testing, you can set a small limit like 5-10 schools
-    scraper.scrape_schools(limit=20, delay=1.0) 
+    # Scrape all schools with a 1 second delay between requests
+    scraper.scrape_schools(limit=None, delay=1.0) 
