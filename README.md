@@ -8,6 +8,7 @@ This repository contains scripts to scrape email addresses from:
 
 1. Dutch schools (both public and international) - `gather.py`
 2. California Department of Education (CDE) school directory - `cde_gather.py`
+3. Berlin Schools Directory - `berlin_gather.py`
 
 ## Requirements
 
@@ -72,9 +73,26 @@ By default, it attempts to scrape all schools. The scraper has built-in delays t
 - `emails.txt`: List of gathered emails from Dutch schools
 - `failed.txt`: List of URLs that couldn't be processed
 - `cde_administrators_[timestamp].csv`: Detailed information from CDE schools
+- `berlin_schools_[timestamp].csv`: School information and emails from Berlin
 
 ## Notes
 
-- Both scripts use respectful scraping practices with delays between requests
+- All scripts use respectful scraping practices with delays between requests
 - Proxy support is available for the Dutch schools scraper
-- The CDE scraper extracts both emails and phone numbers 
+- The CDE scraper extracts both emails and phone numbers
+- The Berlin scraper focuses on extracting official school emails
+
+### Berlin Schools Scraper (`berlin_gather.py`)
+
+This script scrapes school information including emails from the Berlin education department's school directory.
+
+```bash
+python berlin_gather.py
+```
+
+The script will:
+1. Collect school details from the Berlin schools directory
+2. Extract official school emails from school profile pages
+3. Save results to a CSV file named `berlin_schools_[timestamp].csv`
+
+By default, it's set to scrape 20 schools. You can modify the limit parameter in the script. 
