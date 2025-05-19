@@ -7,6 +7,8 @@ import re
 import os
 from datetime import datetime
 import urllib.parse
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 
 class BerlinSchoolScraper:
@@ -14,18 +16,44 @@ class BerlinSchoolScraper:
         self.base_url = "https://www.bildung.berlin.de/Schulverzeichnis/SchulListe.aspx"
         self.school_url = "https://www.bildung.berlin.de/Schulverzeichnis/Schulportrait.aspx"
         self.session = requests.Session()
+        
+        # Configure retry strategy
+        retry_strategy = Retry(
+            total=5,  # number of retries
+            backoff_factor=1,  # wait 1, 2, 4, 8, 16 seconds between retries
+            status_forcelist=[500, 502, 503, 504, 429],  # HTTP status codes to retry on
+            allowed_methods=["GET"]  # Only retry on GET requests
+        )
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        self.session.mount("http://", adapter)
+        self.session.mount("https://", adapter)
+        
         self.headers = {
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         }
         
+    def _make_request(self, url: str, params: Optional[Dict] = None, max_retries: int = 3, retry_delay: float = 2.0) -> requests.Response:
+        """Make a request with retry logic"""
+        for attempt in range(max_retries):
+            try:
+                response = self.session.get(url, params=params, headers=self.headers, timeout=30)
+                response.raise_for_status()
+                return response
+            except requests.RequestException as e:
+                if attempt == max_retries - 1:  # Last attempt
+                    raise
+                wait_time = retry_delay * (2 ** attempt)  # Exponential backoff
+                print(f"Request failed (attempt {attempt + 1}/{max_retries}): {str(e)}")
+                print(f"Waiting {wait_time} seconds before retrying...")
+                time.sleep(wait_time)
+    
     def get_school_links(self, page_limit: Optional[int] = None) -> List[Tuple[str, str]]:
         """Get school names and their IDs from the directory page"""
         schools = []
         
         try:
             print(f"\nFetching school links from directory...")
-            response = self.session.get(self.base_url, headers=self.headers, timeout=15)
-            response.raise_for_status()
+            response = self._make_request(self.base_url)
             soup = BeautifulSoup(response.text, 'html.parser')
             
             # Find all school links in the table
@@ -58,8 +86,7 @@ class BerlinSchoolScraper:
         params = {"IDSchulzweig": school_id}
         
         try:
-            response = self.session.get(self.school_url, params=params, headers=self.headers, timeout=15)
-            response.raise_for_status()
+            response = self._make_request(self.school_url, params=params)
             soup = BeautifulSoup(response.text, 'html.parser')
             
             school_data = {
@@ -189,7 +216,7 @@ class BerlinSchoolScraper:
                     if idx > 1:
                         time.sleep(delay)
                         
-                    # Get school details
+                    # Get school details with retries
                     school_info = self.get_school_details(school_id)
                     
                     # Print found/not found messages for key fields
@@ -203,6 +230,12 @@ class BerlinSchoolScraper:
                     
                 except Exception as e:
                     print(f"Error processing school {school_name}: {str(e)}")
+                    error_data = {
+                        "School ID": school_id,
+                        "School Name": school_name,
+                        "Error": str(e)
+                    }
+                    all_data.append(error_data)
                     
         except KeyboardInterrupt:
             print("\nScraping interrupted by user. Saving collected data...")
